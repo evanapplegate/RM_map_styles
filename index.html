@@ -36,7 +36,9 @@ html, body { margin: 0; height: 100%; }
 </div>
 <script>
 const HOST = location.origin + location.pathname.replace(/[^/]*$/, "");
-const START = { center: [-111.78, 40.55], zoom: 11 };
+let START = { center: [-111.78, 40.55], zoom: 11 };
+const hm = location.hash.match(/^#(\d+\.?\d*)\/(-?\d+\.?\d*)\/(-?\d+\.?\d*)/);
+if (hm) START = { zoom: +hm[1], center: [+hm[3], +hm[2]] };
 const GRAPHITE_BOUNDS = [-112.1557, 40.183, -111.4732, 40.834];
 
 // graphite pane: baked raster underlay + the LIVE Rainmaker Labels vector
@@ -78,6 +80,11 @@ const m3 = new maplibregl.Map({ container: "m3", center: START.center,
   style: HOST + "styles/rainmaker_topo_relief_test.json" });
 m2.addControl(new maplibregl.AttributionControl({ compact: true,
   customAttribution: "Esri, USGS" }));
+m2.on("moveend", () => {
+  const c = m2.getCenter();
+  history.replaceState(null, "",
+    "#" + m2.getZoom().toFixed(2) + "/" + c.lat.toFixed(5) + "/" + c.lng.toFixed(5));
+});
 m3.addControl(new maplibregl.AttributionControl({ compact: true,
   customAttribution: "Esri, USGS" }));
 
