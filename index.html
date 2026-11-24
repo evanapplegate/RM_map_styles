@@ -44,11 +44,18 @@ const GRAPHITE_BOUNDS = [-112.1557, 40.183, -111.4732, 40.834];
 const m1ready = fetch(HOST + "styles/rainmaker_labels.json")
   .then(r => r.json())
   .then(ls => {
+    // thicken every road line (casing and fill) over the baked relief
+    const scaleW = v => typeof v === "number" ? v * 2
+      : (v && v.stops ? Object.assign({}, v, { stops: v.stops.map(s => [s[0], s[1] * 2]) }) : v);
+    ls.layers.forEach(L => {
+      if (L.type === "line" && /^Road/.test(L.id) && L.paint && L.paint["line-width"])
+        L.paint["line-width"] = scaleW(L.paint["line-width"]);
+    });
     const style = {
       version: 8, glyphs: ls.glyphs, sprite: ls.sprite,
       sources: Object.assign({
         g: { type: "raster", tiles: [HOST + "tiles/graphite/{z}/{x}/{y}.png"],
-             tileSize: 256, minzoom: 9, maxzoom: 13, bounds: GRAPHITE_BOUNDS }
+             tileSize: 256, minzoom: 9, maxzoom: 14, bounds: GRAPHITE_BOUNDS }
       }, ls.sources),
       layers: [
         { id: "bg", type: "background", paint: { "background-color": "#F5F5F1" } },
