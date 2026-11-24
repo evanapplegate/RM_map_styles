@@ -41,11 +41,39 @@ const hm = location.hash.match(/^#(\d+\.?\d*)\/(-?\d+\.?\d*)\/(-?\d+\.?\d*)/);
 if (hm) START = { zoom: +hm[1], center: [+hm[3], +hm[2]] };
 const GRAPHITE_BOUNDS = [-112.1557, 40.183, -111.4732, 40.834];
 
-// graphite pane: baked raster underlay + the LIVE Rainmaker Labels vector
-// style (roads, shields, every label) rendered on top
-const m1ready = fetch(HOST + "styles/rainmaker_labels.json")
-  .then(r => r.json())
-  .then(ls => {
+// credits stay behind the (i) button until someone clicks it
+function quietCredits(map, text) {
+  map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: text }));
+  const fold = () => {
+    const el = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    if (el) { el.classList.remove("maplibregl-compact-show"); el.removeAttribute("open"); }
+  };
+  fold();
+  map.once("load", fold);
+}
+
+// graphite pane: baked raster underlay (Pro's own render of the toolbox
+// stack) with everything vector drawn LIVE on top: Rainmaker Waterbodies and
+// Hydro, then the Rainmaker Labels style (roads, shields, every label)
+const getJSON = name => fetch(HOST + "styles/" + name + ".json").then(r => r.json());
+const m1ready = Promise.all([getJSON("rainmaker_labels"), getJSON("rainmaker_waterbodies"),
+                             getJSON("rainmaker_hydro")])
+  .then(([ls, wb, hy]) => {
+    // the toolbox holds its water at 75% inside the Custom Basemap group
+    const WOP = 0.75;
+    const fade = v => v === undefined ? WOP : typeof v === "number" ? v * WOP
+      : (v && v.stops ? Object.assign({}, v, { stops: v.stops.map(s => [s[0], s[1] * WOP]) }) : v);
+    const water = [];
+    [["wb", wb], ["hy", hy]].forEach(([tag, st]) => st.layers.forEach(L => {
+      if ((L.layout || {}).visibility === "none") return;
+      if (L.type !== "fill" && L.type !== "line") return;
+      const C = JSON.parse(JSON.stringify(L));
+      C.id = tag + ":" + L.id;
+      C.paint = C.paint || {};
+      const key = L.type === "fill" ? "fill-opacity" : "line-opacity";
+      C.paint[key] = fade(C.paint[key]);
+      water.push(C);
+    }));
     // thicken only the small roads (local, minor, service, 4WD) over the relief
     const K = 2.2;
     const scaleW = v => typeof v === "number" ? v * K
@@ -58,19 +86,19 @@ const m1ready = fetch(HOST + "styles/rainmaker_labels.json")
     const style = {
       version: 8, glyphs: ls.glyphs, sprite: ls.sprite,
       sources: Object.assign({
-        g: { type: "raster", tiles: [HOST + "tiles/graphite/{z}/{x}/{y}.png"],
-             tileSize: 256, minzoom: 9, maxzoom: 13, bounds: GRAPHITE_BOUNDS }
+        g: { type: "raster", tiles: [HOST + "tiles/graphite/{z}/{x}/{y}.webp"],
+             tileSize: 256, minzoom: 9, maxzoom: 14, bounds: GRAPHITE_BOUNDS }
       }, ls.sources),
       layers: [
         { id: "bg", type: "background", paint: { "background-color": "#F5F5F1" } },
         { id: "g", type: "raster", source: "g" },
+        ...water,
         ...ls.layers
       ]
     };
     const m = new maplibregl.Map({ container: "m1", center: START.center,
       zoom: START.zoom, attributionControl: false, style });
-    m.addControl(new maplibregl.AttributionControl({ compact: true,
-      customAttribution: "Esri World Imagery, USGS 3DEP, Esri Community Maps" }));
+    quietCredits(m, "Esri World Imagery, USGS 3DEP, Esri Community Maps");
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }));
     return m;
   });
@@ -80,15 +108,13 @@ const m2 = new maplibregl.Map({ container: "m2", center: START.center,
 const m3 = new maplibregl.Map({ container: "m3", center: START.center,
   zoom: START.zoom, attributionControl: false,
   style: HOST + "styles/rainmaker_topo_relief_test.json" });
-m2.addControl(new maplibregl.AttributionControl({ compact: true,
-  customAttribution: "Esri, USGS" }));
+quietCredits(m2, "Esri, USGS");
 m2.on("moveend", () => {
   const c = m2.getCenter();
   history.replaceState(null, "",
     "#" + m2.getZoom().toFixed(2) + "/" + c.lat.toFixed(5) + "/" + c.lng.toFixed(5));
 });
-m3.addControl(new maplibregl.AttributionControl({ compact: true,
-  customAttribution: "Esri, USGS" }));
+quietCredits(m3, "Esri, USGS");
 
 // pan/zoom link, the iframed Protomaps pane included (rm:view postMessage)
 m1ready.then(m1 => {
