@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rainmaker terrain panes</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css" rel="stylesheet">
+<style>
+@font-face { font-family: "Classico"; src: url("webfonts/URWClassico-Regular.otf"); }
+@font-face { font-family: "Classico"; font-weight: bold;
+  src: url("webfonts/URWClassico-Bold.otf"); }
+:root { --forest: #1C2C26; --pine: #103D1D; --mist: #F5F5F1; --grain: #FFF1CF; }
+html, body { margin: 0; height: 100%; }
+#grid { display: grid; height: 100%;
+  grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px;
+  background: var(--forest); }
+.pane { position: relative; background: var(--mist); }
+.tag { position: absolute; z-index: 5; top: 8px; left: 8px;
+  background: rgba(28, 44, 38, 0.92); color: var(--mist);
+  font: bold 12px/1.35 Classico, Optima, "Gill Sans", "Segoe UI", sans-serif;
+  letter-spacing: 0.02em; padding: 6px 9px; max-width: 46%; }
+.maplibregl-ctrl-attrib { font-size: 10px; }
+@media (max-width: 700px) { #grid { grid-template-columns: 1fr;
+  grid-template-rows: repeat(4, 1fr); } }
+</style>
+</head>
+<body>
+<div id="grid">
+  <div class="pane"><div id="m1" style="position:absolute;inset:0"></div><div class="tag">ArcGIS Toolbox-output hillshade: most detail, but have to generate for specific viewports</div></div>
+  <div class="pane"><div id="m2" style="position:absolute;inset:0"></div><div class="tag">ArcGIS Online Map Style A</div></div>
+  <div class="pane"><div id="m3" style="position:absolute;inset:0"></div><div class="tag">ArcGIS Online Map Style B</div></div>
+  <div class="pane"><iframe id="m4" src="https://pub-3d83d6d0af15490b9d88464bd8f8c67f.r2.dev/index.html"
+    style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+    <div class="tag">Protomaps self-hosted style</div></div>
+</div>
+<script>
+const HOST = location.origin + location.pathname.replace(/[^/]*$/, "");
+const START = { center: [-111.78, 40.55], zoom: 11 };
+const GRAPHITE_BOUNDS = [-112.1557, 40.183, -111.4732, 40.834];
+
+// graphite pane: baked raster underlay + the LIVE Rainmaker Labels vector
+// style (roads, shields, every label) rendered on top
+const m1ready = fetch(HOST + "styles/rainmaker_labels.json")
+  .then(r => r.json())
+  .then(ls => {
+    const style = {
+      version: 8, glyphs: ls.glyphs, sprite: ls.sprite,
+      sources: Object.assign({
+        g: { type: "raster", tiles: [HOST + "tiles/graphite/{z}/{x}/{y}.png"],
+             tileSize: 256, minzoom: 9, maxzoom: 13, bounds: GRAPHITE_BOUNDS }
+      }, ls.sources),
+      layers: [
+        { id: "bg", type: "background", paint: { "background-color": "#F5F5F1" } },
+        { id: "g", type: "raster", source: "g" },
+        ...ls.layers
+      ]
+    };
+    const m = new maplibregl.Map({ container: "m1", center: START.center,
+      zoom: START.zoom, attributionControl: false, style });
+    m.addControl(new maplibregl.AttributionControl({ compact: true,
+      customAttribution: "Esri World Imagery, USGS 3DEP, Esri Community Maps" }));
+    m.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+    return m;
+  });
+const m2 = new maplibregl.Map({ container: "m2", center: START.center,
+  zoom: START.zoom, attributionControl: false,
+  style: HOST + "styles/rainmaker_hiking_relief_test.json" });
+const m3 = new maplibregl.Map({ container: "m3", center: START.center,
+  zoom: START.zoom, attributionControl: false,
+  style: HOST + "styles/rainmaker_topo_relief_test.json" });
+m2.addControl(new maplibregl.AttributionControl({ compact: true,
+  customAttribution: "Esri, USGS" }));
+m3.addControl(new maplibregl.AttributionControl({ compact: true,
+  customAttribution: "Esri, USGS" }));
+
+// pan/zoom link, the iframed Protomaps pane included (rm:view postMessage)
+m1ready.then(m1 => {
+  const maps = [m1, m2, m3];
+  const frame = document.getElementById("m4");
+  let lock = false;
+  const toFrame = (c, z) => frame.contentWindow &&
+    frame.contentWindow.postMessage({ type: "rm:view", lon: c.lng, lat: c.lat, zoom: z }, "*");
+  maps.forEach(src => {
+    src.on("move", () => {
+      if (lock) return;
+      lock = true;
+      const c = src.getCenter(), z = src.getZoom(), b = src.getBearing(), p = src.getPitch();
+      maps.forEach(dst => {
+        if (dst !== src) dst.jumpTo({ center: c, zoom: z, bearing: b, pitch: p });
+      });
+      toFrame(c, z);
+      lock = false;
+    });
+  });
+  window.addEventListener("message", e => {
+    const d = e.data || {};
+    if (d.type !== "rm:view" || lock) return;
+    lock = true;
+    maps.forEach(m => m.jumpTo({ center: [d.lon, d.lat], zoom: d.zoom }));
+    lock = false;
+  });
+  frame.addEventListener("load", () => toFrame(m2.getCenter(), m2.getZoom()));
+  toFrame(m2.getCenter(), m2.getZoom());
+});
+</script>
+</body>
+</html>
