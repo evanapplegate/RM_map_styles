@@ -102,6 +102,7 @@ m1ready.then(m1 => {
   });
   frame.addEventListener("load", () => toFrame(m2.getCenter(), m2.getZoom()));
   toFrame(m2.getCenter(), m2.getZoom());
+  setTimeout(() => toFrame(m2.getCenter(), m2.getZoom()), 2000);
 });
 </script>
 </body>
