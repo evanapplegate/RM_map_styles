@@ -32,7 +32,13 @@ html, body { margin: 0; height: 100%; }
   <div class="pane"><div id="m3" style="position:absolute;inset:0"></div><div class="tag">ArcGIS Online Map Style B</div></div>
   <div class="pane"><iframe id="m4" src="https://pub-3d83d6d0af15490b9d88464bd8f8c67f.r2.dev/index.html"
     style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
-    <div class="tag">Protomaps self-hosted style</div></div>
+    <div class="tag">Protomaps self-hosted style</div>
+    <div class="maplibregl-ctrl maplibregl-ctrl-group" style="position:absolute;top:10px;right:10px;z-index:5">
+      <button class="maplibregl-ctrl-zoom-in" type="button" title="Zoom in" aria-label="Zoom in"
+        onclick="m2.zoomIn()"><span class="maplibregl-ctrl-icon" aria-hidden="true"></span></button>
+      <button class="maplibregl-ctrl-zoom-out" type="button" title="Zoom out" aria-label="Zoom out"
+        onclick="m2.zoomOut()"><span class="maplibregl-ctrl-icon" aria-hidden="true"></span></button>
+    </div></div>
 </div>
 <script>
 const HOST = location.origin + location.pathname.replace(/[^/]*$/, "");
@@ -99,7 +105,7 @@ const m1ready = Promise.all([getJSON("rainmaker_labels"), getJSON("rainmaker_wat
     const m = new maplibregl.Map({ container: "m1", center: START.center,
       zoom: START.zoom, attributionControl: false, style });
     quietCredits(m, "Esri World Imagery, USGS 3DEP, Esri Community Maps");
-    m.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     return m;
   });
 const m2 = new maplibregl.Map({ container: "m2", center: START.center,
@@ -115,6 +121,8 @@ m2.on("moveend", () => {
     "#" + m2.getZoom().toFixed(2) + "/" + c.lat.toFixed(5) + "/" + c.lng.toFixed(5));
 });
 quietCredits(m3, "Esri, USGS");
+m2.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+m3.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
 // pan/zoom link, the iframed Protomaps pane included (rm:view postMessage)
 m1ready.then(m1 => {
