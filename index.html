@@ -115,10 +115,18 @@ const m3 = new maplibregl.Map({ container: "m3", center: START.center,
   zoom: START.zoom, attributionControl: false,
   style: HOST + "styles/rainmaker_topo_relief_test.json" });
 quietCredits(m2, "Esri, USGS");
+// Safari throws if replaceState runs more than 100 times in 30 s, so the URL
+// is written once, after movement settles, and never allowed to throw
+let hashTimer = null;
 m2.on("moveend", () => {
-  const c = m2.getCenter();
-  history.replaceState(null, "",
-    "#" + m2.getZoom().toFixed(2) + "/" + c.lat.toFixed(5) + "/" + c.lng.toFixed(5));
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    const c = m2.getCenter();
+    try {
+      history.replaceState(null, "",
+        "#" + m2.getZoom().toFixed(2) + "/" + c.lat.toFixed(5) + "/" + c.lng.toFixed(5));
+    } catch (e) {}
+  }, 400);
 });
 quietCredits(m3, "Esri, USGS");
 m2.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -131,24 +139,33 @@ m1ready.then(m1 => {
   let lock = false;
   const toFrame = (c, z) => frame.contentWindow &&
     frame.contentWindow.postMessage({ type: "rm:view", lon: c.lng, lat: c.lat, zoom: z }, "*");
+  // the lock is always released, even if a map throws, or one error would
+  // leave every pane unlinked for good
   maps.forEach(src => {
     src.on("move", () => {
       if (lock) return;
       lock = true;
-      const c = src.getCenter(), z = src.getZoom(), b = src.getBearing(), p = src.getPitch();
-      maps.forEach(dst => {
-        if (dst !== src) dst.jumpTo({ center: c, zoom: z, bearing: b, pitch: p });
-      });
-      toFrame(c, z);
-      lock = false;
+      try {
+        const c = src.getCenter(), z = src.getZoom(), b = src.getBearing(), p = src.getPitch();
+        maps.forEach(dst => {
+          if (dst !== src) dst.jumpTo({ center: c, zoom: z, bearing: b, pitch: p });
+        });
+        toFrame(c, z);
+      } finally {
+        lock = false;
+      }
     });
   });
   window.addEventListener("message", e => {
     const d = e.data || {};
     if (d.type !== "rm:view" || lock) return;
+    if (![d.lon, d.lat, d.zoom].every(Number.isFinite) || Math.abs(d.lat) > 90) return;
     lock = true;
-    maps.forEach(m => m.jumpTo({ center: [d.lon, d.lat], zoom: d.zoom }));
-    lock = false;
+    try {
+      maps.forEach(m => m.jumpTo({ center: [d.lon, d.lat], zoom: d.zoom }));
+    } finally {
+      lock = false;
+    }
   });
   frame.addEventListener("load", () => toFrame(m2.getCenter(), m2.getZoom()));
   toFrame(m2.getCenter(), m2.getZoom());
